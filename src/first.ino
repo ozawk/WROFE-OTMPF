@@ -2,7 +2,7 @@
 #include <NewPing.h>
 #include <ESP32Servo.h>
 
-// ピン定義
+// NOTE ピン定義
 #define BTN_PIN D9
 #define DIS_L_PIN D8
 #define DIS_R_PIN D10
@@ -13,71 +13,70 @@
 #define MOT_REF_PIN D3
 #define STEER_PIN D4
 
-#define DIS_CM_MAX 200             // 距離センサ無限大の定義
-#define STEER_US_MIN 500           // TODO SG-90 **以下4つの定数、統合できるのでは？
-#define STEER_US_MAX 2400          // SG-90
-#define STEER_L_END 10             // 左の終端角度 超過禁止
-#define STEER_R_END 90             // 右の終端角度 超過禁止
-#define STEER_HZ 50                // SG-90
-#define BTN_LONG_PUSH_TIME 1000000 // ボタンを何us押せば反応するか 1000us=1ms
+#define DIS_CM_MAX 200             // 超音波測距センサの距離無限大の定義
+#define STEER_US_MIN 500           // TODO サーボSG-90の値 **以下4つの定数、統合したい
+#define STEER_US_MAX 2400          // サーボSG-90の値
+#define STEER_L_END 10             // ステア左の終端角度 超過禁止
+#define STEER_R_END 90             // ステア右の終端角度 超過禁止
+#define STEER_HZ 50                // サーボSG-90の値
+#define BTN_LONG_PUSH_TIME 1000000 // ボタンを何us押せば反応するか 1000000us=1000ms
 
-// NOTE hampelフィルタ
-#define DIS_L_HAMPEL_PLOT_SIZE 10 // BUG hampelの1サイクルに含まれるplot数 **全然うまくいっていない
-#define DIS_R_HAMPEL_PLOT_SIZE 20
-#define HAMPEL_STD_DEVIATION_MULTIPLE 2 // hampelで標準偏差の何倍を外れ値とするか
-int dis_l_hampel_plots[DIS_L_HAMPEL_PLOT_SIZE] = {0};
-int dis_r_hampel_plots[DIS_R_HAMPEL_PLOT_SIZE] = {0};
+// NOTE hampelフィルタの定数など
+#define DIS_L_HAMPEL_PLOT_SIZE 10                     // hampelの1サイクルに含まれるplot数
+#define DIS_R_HAMPEL_PLOT_SIZE 20                     // 同じく右の測距センサ
+#define HAMPEL_STD_DEVIATION_MULTIPLE 2               // hampelで標準偏差の何倍を外れ値とするか
+int dis_l_hampel_plots[DIS_L_HAMPEL_PLOT_SIZE] = {0}; // FirstInFirstOutで入れていく hampelのplotsを格納
+int dis_r_hampel_plots[DIS_R_HAMPEL_PLOT_SIZE] = {0}; // 同じく右の測距センサ
 
-Servo staring;
-NewPing l_dis(DIS_L_PIN, DIS_L_PIN, DIS_CM_MAX);
-NewPing r_dis(DIS_R_PIN, DIS_R_PIN, DIS_CM_MAX);
+Servo staring;                                   // サーボの初期化
+NewPing l_dis(DIS_L_PIN, DIS_L_PIN, DIS_CM_MAX); // 左の超音波測距センサを叩く関数
+NewPing r_dis(DIS_R_PIN, DIS_R_PIN, DIS_CM_MAX); // 右の
 
-int flag_stby_push_move = 0;    // S/Mフラグ管理 STBY=0 MOVE=1
-int court_c_or_ccw = 0;         // c=0, ccw=1
-int now_what_num_area_cont = 2; // 辺に入った瞬間に増える スタートの辺と曲がる時は別処理なので最初から2
-int start_turn_right_cont = 0;
-int start_turn_left_cont = 0;
-int turn_passed_time = 0; // 何秒前に曲がったか
-float guess_start_pos_lr_ratio_ave = 0.0;
-int btn_cont = 0; // ボタン押下判定された回数を計測 クロックに依存
-unsigned int btn_time_cont = 0;
+int flag_stby_push_move = 0;              // S/Mフラグ STBY=0 MOVE=1
+int court_c_or_ccw = 0;                   // 車体がどちらむきに走行しているか c=0, ccw=1
+int now_what_num_area_cont = 2;           // 直進する辺に入った瞬間に増える スタートの辺と曲がる時は別処理になっているから最初から2
+int start_turn_right_cont = 0;            // n回リーチする感じ これが一定以上になると右折する関数を発火する
+int start_turn_left_cont = 0;             // TODO これ分ける必要なかった
+int turn_passed_time = 0;                 // 直近では何秒前に曲がったか もう一回曲がっちゃうの防止
+float guess_start_pos_lr_ratio_ave = 0.0; // スタート時の左右の距離比 これからスタート場所を推定する
+int btn_cont = 0;                         // ボタン押下判定された回数を計測 クロックに依存
+unsigned int btn_time_cont = 0;           // ボタンが何秒押下されたかカウントする 一定以上で長押し判定
 
-void setup()
+void setup() // 初回に1度だけ実行
 {
-    Serial.begin(9600);
-    // ピン役割定義
-    pinMode(BTN_PIN, INPUT);
+    Serial.begin(9600);      // デバッグ用USBシリアル開ける
+    pinMode(BTN_PIN, INPUT); // ピンを設定
     pinMode(MOT_1_PIN, OUTPUT);
     pinMode(MOT_2_PIN, OUTPUT);
     pinMode(MOT_3_PIN, OUTPUT);
     pinMode(MOT_REF_PIN, OUTPUT);
     pinMode(BUZZ_PIN, OUTPUT);
-    staring.setPeriodHertz(STEER_HZ);
+    staring.setPeriodHertz(STEER_HZ); // サーボを定義して設定
     staring.attach(STEER_PIN, STEER_US_MIN, STEER_US_MAX);
-    Serial.println("=DBG= START");
-    buzz_boot(); // 起動完了
+    Serial.println("=DBG= SYS BOOT");
+    buzz_boot(); // ここまで起動
     for (;;)
-    {
-        steer_ctrl(0, 0, 3); // サイクル未定義 3で直進、ブレーキ
+    {                        // ボタンの長押し判定待ち受け
+        steer_ctrl(0, 0, 3); // 3で直進、ブレーキをかける
         digitalWrite(MOT_1_PIN, LOW);
         digitalWrite(MOT_2_PIN, LOW);
         digitalWrite(MOT_3_PIN, LOW);
         digitalWrite(MOT_REF_PIN, LOW);
 
         if (button_ref() == 1)
-        { // 長押し
+        { // 開始
             buzz_start();
-            delay(1000);
+            delay(1000); // 手が離れるのとかを待つ
             for (int i = 0; i < 20; i++)
-            {
+            { // 20回ぐらい左右の距離を読んで平均をとる
                 guess_start_pos_lr_ratio_ave = guess_start_pos_lr_ratio_ave + (float)l_dis.ping_cm() / ((float)l_dis.ping_cm() + (float)r_dis.ping_cm());
                 delay(50);
             }
             guess_start_pos_lr_ratio_ave = guess_start_pos_lr_ratio_ave / 20;
-            int start_pos_i_c_o = 0;                // i:0 c:1 o:2
-            if (guess_start_pos_lr_ratio_ave < 0.3) // C周りと仮定する
+            int start_pos_i_c_o = 0;                // 車体がどの位置からスタートするか in:0 center:1 out:2
+            if (guess_start_pos_lr_ratio_ave < 0.3) // C周りと仮定する まだ車体の回転方向はわからないから
             {
-                start_pos_i_c_o = 2; // i:0 c:1 o:2 C周りと仮定
+                start_pos_i_c_o = 2; // in:0 center:1 out:2 C周りと仮定
             }
             else if (guess_start_pos_lr_ratio_ave < 0.6) // C周りと仮定する
             {
@@ -88,29 +87,29 @@ void setup()
                 start_pos_i_c_o = 0; // i:0 c:1 o:2 C周りと仮定
             }
             buzz_two();
-            Serial.print("=DBG= START POS (IF CLOCKWISE 0:IN 1:CEN 2:OUT):");
+            Serial.print("=DBG= START POS (IF CLOCKWISE 0:IN 1:CEN 2:OUT):"); // C周りと仮定する
             Serial.println(start_pos_i_c_o);
             for (;;)
-            {
+            { // 走行開始
                 digitalWrite(MOT_1_PIN, HIGH);
                 digitalWrite(MOT_2_PIN, LOW);
                 digitalWrite(MOT_3_PIN, LOW);
                 digitalWrite(MOT_REF_PIN, HIGH);
-                int l_raw = l_dis.ping_cm();
+                int l_raw = l_dis.ping_cm(); // 左右の距離を取得
                 int r_raw = r_dis.ping_cm();
-                int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
+                int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE); // 取得した距離をhampelフィルタにかける
                 int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
                 Serial.print("=DBG= DIS HAMPELED L:");
                 Serial.print(l);
                 Serial.print(" R:");
                 Serial.println(r);
-                if (is_start_turn_right(l, r) == 1)
+                if (is_start_turn_right(l, r) == 1) // どっち回りかわからないので両方調べる
                 {
                     court_c_or_ccw = 0; // C周りと確定
                     Serial.println("=DBG= CONFIRM CLOCKWISE");
                     break;
                 }
-                else if (is_start_turn_left(l, r) == 1)
+                else if (is_start_turn_left(l, r) == 1) // どっち回りかわからないので両方調べる
                 {
                     court_c_or_ccw = 1; // CCW周りと確定
                     Serial.println("=DBG= CONFIRM COUNTERCLOCKWISE");
@@ -122,43 +121,43 @@ void setup()
                     else if (start_pos_i_c_o == 2)
                     {
                         start_pos_i_c_o = 0;
-                    } // start_pos_i_c_oはC周りと仮定してなのでIN,OUT時について反転させる
+                    } // start_pos_i_c_oはC周りと仮定した時の話なので，CCWであればIN,OUT時について反転させる
                     Serial.println("=DBG= START POS INVERTED FOR CCW");
                     break;
                 }
             }
-            if (court_c_or_ccw == 0) // c周り
+            if (court_c_or_ccw == 0) // C周りの場合
             {
                 if (start_pos_i_c_o == 0)
-                { // i
+                { // inの場合
                     first_in_turn_right();
                     break;
                 }
                 else if (start_pos_i_c_o == 1)
-                { // c
+                { // center
                     first_center_turn_right();
                     break;
                 }
                 else
-                { // o
+                { // out
                     first_out_turn_right();
                     break;
                 }
             }
             else
-            { // ccw周り
+            { // ccw周りの場合
                 if (start_pos_i_c_o == 0)
-                { // i
+                { // in
                     first_in_turn_left();
                     break;
                 }
                 else if (start_pos_i_c_o == 1)
-                { // c
+                { // center
                     first_center_turn_left();
                     break;
                 }
                 else
-                { // o
+                { // out
                     first_out_turn_left();
                     break;
                 }
@@ -169,16 +168,16 @@ void setup()
 
 void loop()
 {
-    button_ref(); // 停止用 マルチタスクに改良したい
+    button_ref(); // 動作停止のためボタン押下を判定
     if (flag_stby_push_move == 1)
     {
         digitalWrite(MOT_1_PIN, HIGH);
         digitalWrite(MOT_2_PIN, LOW);
         digitalWrite(MOT_3_PIN, LOW);
         digitalWrite(MOT_REF_PIN, HIGH);
-        int l_raw = l_dis.ping_cm();
+        int l_raw = l_dis.ping_cm(); // 左右の距離を取得
         int r_raw = r_dis.ping_cm();
-        int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
+        int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE); // 取得したきょりをhampelフィルタに通す
         int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
         Serial.print("=DBG= DIS HAMPELED L:");
         Serial.print(l);
@@ -186,7 +185,7 @@ void loop()
         Serial.println(r);
 
         steer_ctrl(l, r, 0);
-        if (court_c_or_ccw == 0) // C周り
+        if (court_c_or_ccw == 0) // C周りの時右に曲がる
         {
             if (is_start_turn_right(l, r) == 1 && (millis() - turn_passed_time) > 4000)
             {
@@ -196,7 +195,7 @@ void loop()
             }
         }
 
-        if (court_c_or_ccw == 1) // CCW周り
+        if (court_c_or_ccw == 1) // CCW周りの時左に曲がる
         {
             if (is_start_turn_left(l, r) == 1 && (millis() - turn_passed_time) > 4000)
             {
@@ -206,13 +205,13 @@ void loop()
             }
         }
 
-        if (now_what_num_area_cont >= 13)
+        if (now_what_num_area_cont >= 13) // 13回以上曲がったら3週が終了と判定する
         {
             steer_ctrl(0, 0, 3);
-            delay(2000);
+            delay(2000); // ちょっと進んであげてから停止する
             buzz_start();
             for (;;)
-            {
+            { // ブレーキをかけ続ける
                 digitalWrite(MOT_1_PIN, LOW);
                 digitalWrite(MOT_2_PIN, LOW);
                 digitalWrite(MOT_3_PIN, LOW);
@@ -222,6 +221,7 @@ void loop()
     }
     else
     {
+        // 3周せず停止と入力された時
         steer_ctrl(0, 0, 3);
         digitalWrite(MOT_1_PIN, LOW);
         digitalWrite(MOT_2_PIN, LOW);
@@ -323,9 +323,9 @@ void turn_left()
     buzz_three();
 }
 
-int is_start_turn_right(int l, int r) // LR距離を入力する
+int is_start_turn_right(int l, int r) // 右に曲がるかどうかを判定 LR距離を入力する
 {
-    if (r > 100 || r == 0)
+    if (r > 100 || r == 0) // 一定距離もしくは無限であれば
     {
         start_turn_right_cont = start_turn_right_cont + 1;
         Serial.print("=DBG= TURN RIGHT REACH:");
@@ -336,7 +336,7 @@ int is_start_turn_right(int l, int r) // LR距離を入力する
         start_turn_right_cont = 0;
     }
 
-    if (start_turn_right_cont > 4)
+    if (start_turn_right_cont > 4) // 4回曲がる判定になれば曲がる
     {
         return 1;
     }
@@ -346,9 +346,9 @@ int is_start_turn_right(int l, int r) // LR距離を入力する
     }
 }
 
-int is_start_turn_left(int l, int r) // LR距離を入力する
+int is_start_turn_left(int l, int r) // 左に曲がるかどうかを判定 LR距離を入力する
 {
-    if (l > 90 || l == 0)
+    if (l > 90 || l == 0) // 一定距離もしくは無限なら
     {
         start_turn_left_cont = start_turn_left_cont + 1;
         Serial.print("=DBG= TURN LEFT REACH:");
@@ -359,7 +359,7 @@ int is_start_turn_left(int l, int r) // LR距離を入力する
         start_turn_left_cont = 0;
     }
 
-    if (start_turn_left_cont > 4)
+    if (start_turn_left_cont > 4) // 4回曲がる判定クリアすると曲がる
     {
         return 1;
     }
@@ -392,7 +392,7 @@ int button_ref()
         }
         else if ((micros() - btn_time_cont) >= BTN_LONG_PUSH_TIME) // 時間経過を計測
         {
-            if (flag_stby_push_move == 0) // FIXME flag反転 消すかも
+            if (flag_stby_push_move == 0) // FIXME S/Mのflagを反転 **消すかも
             {
                 flag_stby_push_move = 1;
             }
@@ -413,6 +413,7 @@ int button_ref()
 
 int hampel(int now_plot, int *plots, int plots_size)
 {
+    // BUG たまに新たにスパイクノイズを生み出すのやめてほしい
     for (int i = 0; i < plots_size - 1; i++)
     {
         plots[i] = plots[i + 1];
@@ -453,7 +454,7 @@ int hampel(int now_plot, int *plots, int plots_size)
     }
 }
 
-// NOTE 比較関数 昇順ソート
+// NOTE hampel用 比較関数 昇順ソートをする
 int cmp(const void *x, const void *y)
 {
     if (*(int *)x > *(int *)y)
