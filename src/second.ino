@@ -195,80 +195,76 @@ void loop()
         // Serial.println(r);
 
         steer_ctrl(l, r, 3, 0.0);
-        if (is_start_turn_right(l, r) == 1)
+        if (is_start_turn_right(l, r) == 1) // Rに曲がる
         {
             buzz_one();
-            if (is_now_out_or_in == 0)
+            if (is_now_out_or_in == 0) // 外から侵入の時
             {
-                turn_right_from_out_first();
+                turn_right_from_out_first(); // 外側から外側へR折一段目
             }
             else
             {
-                turn_right_from_in_first();
+                turn_right_from_in_first(); // 内側から外側へR折 一段目
             }
-            for (int i = 0; i < 100; i++)
+            for (int i = 0; i < 100; i++) // FIXME 100回受けてるけど意味がないです
             {
                 huskey();
             }
-            if (is_detected_green == 1) // 曲がってる途中
-            {
+            if (is_detected_green == 1) // 曲がってる途中に1回目読む
+            {                           // Gやった場合=>内側へ
                 buzz_three();
-                turn_right_from_out_to_in_second();
+                turn_right_to_in_second(); // 内側へR折 二段目
                 buzz_one();
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < 100; i++) // FIXME 100回読んでるけど意味がないですこれ
                 {
                     huskey();
                 }
-                if (is_detected_green == 1) // 曲がってから1
-                {
+                if (is_detected_green == 1) // 曲がりきって一つ目ブロック超えてから内側にて読む 2回目かつ最後の読み
+                {                           // 結局緑緑
                     buzz_three();
-                    digitalWrite(MOT_1_PIN, LOW);
-                    digitalWrite(MOT_2_PIN, LOW);
-                    digitalWrite(MOT_3_PIN, LOW);
-                    digitalWrite(MOT_REF_PIN, LOW);
+                    // FIXME 続きを書く
                 }
                 else
-                {
+                { // 内側にて2回目の読みが外側だったので内から外へいく
                     buzz_one();
-                    switch_right_from_in_to_out();
+                    switch_right_from_in_to_out(); // うちから外へ移行するみたいな
                     buzz_three();
                     for (;;)
                     {
-                        is_now_out_or_in = 1;
                         int l_raw = l_dis.ping_cm();
                         int r_raw = r_dis.ping_cm();
                         int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
                         int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
-                        steer_ctrl(l, r, 0, 0.9);
-                        digitalWrite(MOT_1_PIN, HIGH);
+                        steer_ctrl(l, r, 0, 0.9);      // P制御をする 外側を走る
+                        digitalWrite(MOT_1_PIN, HIGH); // FIXME この距離でP制御はぎゃくにややこしそう
                         digitalWrite(MOT_2_PIN, LOW);
                         digitalWrite(MOT_3_PIN, LOW);
                         digitalWrite(MOT_REF_PIN, HIGH);
                         if (is_start_turn_right(l, r) == 1)
                         {
+                            is_now_out_or_in = 1; // 今内側にいるから記録する
                             buzz_one();
-                            break;
+                            break; // 曲がりたくなったらbreakで最初から始める
                         }
                     }
                 }
             }
             else
-            { /// 曲がってる時に外側へ
+            { // 曲がってる途中で読んで外側やった
                 buzz_one();
-                turn_right_from_out_to_out_second();
+                turn_right_to_out_second(); // 外側に行くR折 二段目
                 buzz_three();
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < 100; i++) // 曲がり切って1個目障害物超えてから
                 {
                     huskey();
                 }
-                if (is_detected_green == 1) // 曲がってから2
-                {
+                if (is_detected_green == 1)
+                { // 2回目の読みで緑=>内側やった
                     buzz_one();
-                    switch_right_from_out_to_in();
+                    switch_right_from_out_to_in(); // 外側から内側へ移行する感じ
                     buzz_three();
                     for (;;)
                     {
-                        is_now_out_or_in = 1;
                         int l_raw = l_dis.ping_cm();
                         int r_raw = r_dis.ping_cm();
                         int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
@@ -278,19 +274,19 @@ void loop()
                         digitalWrite(MOT_2_PIN, LOW);
                         digitalWrite(MOT_3_PIN, LOW);
                         digitalWrite(MOT_REF_PIN, HIGH);
-                        if (is_start_turn_right(l, r) == 1)
+                        if (is_start_turn_right(l, r) == 1) // 角が見えればbreakしてふり出しへ
                         {
+                            is_now_out_or_in = 1; // 今内側にいるから記録する
                             buzz_one();
                             break;
                         }
                     }
                 }
                 else
-                {
+                { // 2回目の読みで外側やった
                     buzz_three();
-                    for (;;)
+                    for (;;) // 今外側いるからそのまま直進するよ
                     {
-                        is_now_out_or_in = 0;
                         int l_raw = l_dis.ping_cm();
                         int r_raw = r_dis.ping_cm();
                         int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
@@ -302,7 +298,8 @@ void loop()
                         digitalWrite(MOT_REF_PIN, HIGH);
                         if (is_start_turn_right(l, r) == 1)
                         {
-                            buzz_one();
+                            is_now_out_or_in = 0; // 今外側にいるから記録する
+                            buzz_one();           // ふり出しへ
                             break;
                         }
                     }
@@ -311,9 +308,9 @@ void loop()
         }
     }
     else
-    {
+    { // 停止ボタン押された時
         steer_ctrl(0, 0, 3, 0.0);
-        digitalWrite(MOT_1_PIN, LOW);
+        digitalWrite(MOT_1_PIN, LOW); // ブレーキをかける
         digitalWrite(MOT_2_PIN, LOW);
         digitalWrite(MOT_3_PIN, LOW);
         digitalWrite(MOT_REF_PIN, LOW);
@@ -321,7 +318,7 @@ void loop()
     delay(20); // FIXME 調整する クロックは早い方がいいよね
 }
 
-void turn_right_from_out_first()
+void turn_right_from_out_first() // POINT 一段目 外側から
 {
     steer_ctrl(0, 0, 3, 0.0);
     delay(200);
@@ -335,7 +332,7 @@ void turn_right_from_out_first()
     delay(2000);
 }
 
-void turn_right_from_in_first()
+void turn_right_from_in_first() // POINT 一段目 内側から
 {
     steer_ctrl(0, 0, 3, 0.0);
     delay(200);
@@ -349,26 +346,7 @@ void turn_right_from_in_first()
     delay(2000);
 }
 
-void turn_right_from_out_to_in_second()
-{
-    digitalWrite(MOT_1_PIN, HIGH);
-    digitalWrite(MOT_2_PIN, LOW);
-    digitalWrite(MOT_3_PIN, LOW);
-    digitalWrite(MOT_REF_PIN, HIGH);
-    steer_ctrl(0, 0, 2, 0.0);
-    delay(800);
-    steer_ctrl(0, 0, 3, 0.0);
-    delay(4000);
-    steer_ctrl(0, 0, 1, 0.0);
-    delay(500);
-    digitalWrite(MOT_1_PIN, LOW);
-    digitalWrite(MOT_2_PIN, LOW);
-    digitalWrite(MOT_3_PIN, LOW);
-    digitalWrite(MOT_REF_PIN, LOW);
-    delay(2000);
-}
-
-void turn_right_from_out_to_out_second()
+void turn_right_to_out_second() // POINT 二段目 外側へ
 {
     digitalWrite(MOT_1_PIN, HIGH);
     digitalWrite(MOT_2_PIN, LOW);
@@ -388,7 +366,26 @@ void turn_right_from_out_to_out_second()
     delay(2000);
 }
 
-void switch_right_from_in_to_out()
+void turn_right_to_in_second() // POINT 二段目 内側へ
+{
+    digitalWrite(MOT_1_PIN, HIGH);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, HIGH);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(800);
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(4000);
+    steer_ctrl(0, 0, 1, 0.0);
+    delay(500);
+    digitalWrite(MOT_1_PIN, LOW);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, LOW);
+    delay(2000);
+}
+
+void switch_right_from_in_to_out() // POINT 内側から外側へ移行する
 {
     digitalWrite(MOT_1_PIN, HIGH);
     digitalWrite(MOT_2_PIN, LOW);
@@ -406,7 +403,7 @@ void switch_right_from_in_to_out()
     digitalWrite(MOT_REF_PIN, LOW);
 }
 
-void switch_right_from_out_to_in()
+void switch_right_from_out_to_in() // POINT 外側から内側へ移行する
 {
     digitalWrite(MOT_1_PIN, HIGH);
     digitalWrite(MOT_2_PIN, LOW);
@@ -421,7 +418,7 @@ void switch_right_from_out_to_in()
     steer_ctrl(0, 0, 3, 0.0);
 }
 
-void huskey()
+void huskey() // 謎エリア
 {
     if (Serial1.available())
     {
