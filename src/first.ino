@@ -187,7 +187,7 @@ void loop()
         steer_ctrl(l, r, 0);
         if (court_c_or_ccw == 0) // C周りの時右に曲がる
         {
-            if (is_start_turn_right(l, r) == 1 && (millis() - turn_passed_time) > 4000)
+            if (is_start_turn_right(l, r) == 1 && (millis() - turn_passed_time) > 4000) // POINT R周り何秒間曲がらせないか
             {
                 turn_right();
                 now_what_num_area_cont = now_what_num_area_cont + 1;
@@ -197,7 +197,7 @@ void loop()
 
         if (court_c_or_ccw == 1) // CCW周りの時左に曲がる
         {
-            if (is_start_turn_left(l, r) == 1 && (millis() - turn_passed_time) > 4000)
+            if (is_start_turn_left(l, r) == 1 && (millis() - turn_passed_time) > 4000) // POINT L周り何秒間曲がらせないか
             {
                 turn_left();
                 now_what_num_area_cont = now_what_num_area_cont + 1;
@@ -205,11 +205,11 @@ void loop()
             }
         }
 
-        if (now_what_num_area_cont >= 13) // 13回以上曲がったら3週が終了と判定する
+        if (now_what_num_area_cont >= 13) // POINT **どうせ1回ぐらい多く回っちゃうから賭けで一回長く走らせる? 13回以上曲がったら3週が終了と判定する
         {
             steer_ctrl(0, 0, 3);
-            delay(2000); // ちょっと進んであげてから停止する
-            buzz_start();
+            delay(2000);  // POINT もっと進んであげたら壁当たるかもだけど安全 ちょっと進んであげてから停止する
+            buzz_start(); // 始まるわけではない
             for (;;)
             { // ブレーキをかけ続ける
                 digitalWrite(MOT_1_PIN, LOW);
@@ -231,19 +231,21 @@ void loop()
     delay(20); // FIXME 調整する クロックは早い方がいいよね
 }
 
-void first_in_turn_right()
+void first_in_turn_right() // POINT 初回内側からR折
 {
     Serial.println("=DBG= RIGHT TURN CONFIRM: FIRST IN");
     buzz_one();
-    steer_ctrl(0, 0, 2);
-    delay(2300);
     steer_ctrl(0, 0, 3);
-    delay(2300);
+    delay(1100);
+    steer_ctrl(0, 0, 2);
+    delay(2500);
+    steer_ctrl(0, 0, 3);
+    delay(1700);
     buzz_three();
     Serial.println("=DBG= TURN END");
 }
 
-void first_center_turn_right()
+void first_center_turn_right() // POINT 初回中央からR折
 {
     Serial.println("=DBG= RIGHT TURN CONFIRM: FIRST CENTER");
     buzz_two();
@@ -255,7 +257,7 @@ void first_center_turn_right()
     Serial.println("=DBG= TURN END");
 }
 
-void first_out_turn_right()
+void first_out_turn_right() // POINT 初回外側からR折
 {
     Serial.println("=DBG= RIGHT TURN CONFIRM: FIRST OUT");
     buzz_three();
@@ -267,7 +269,7 @@ void first_out_turn_right()
     Serial.println("=DBG= TURN END");
 }
 
-void first_in_turn_left()
+void first_in_turn_left() // POINT 初回内側からL折
 {
     Serial.println("=DBG= LEFT TURN CONFIRM: FIRST IN");
     buzz_one();
@@ -279,7 +281,7 @@ void first_in_turn_left()
     Serial.println("=DBG= TURN END");
 }
 
-void first_center_turn_left()
+void first_center_turn_left() // POINT 初回中央からL折
 {
     Serial.println("=DBG= LEFT TURN CONFIRM: FIRST CENTER");
     buzz_two();
@@ -291,7 +293,7 @@ void first_center_turn_left()
     Serial.println("=DBG= TURN END");
 }
 
-void first_out_turn_left()
+void first_out_turn_left() // POINT 初回外側からL折
 {
     Serial.println("=DBG= LEFT TURN CONFIRM: FIRST OUT");
     buzz_three();
@@ -303,17 +305,19 @@ void first_out_turn_left()
     Serial.println("=DBG= TURN END");
 }
 
-void turn_right()
+void turn_right() // POINT 重要 R折
 {
     buzz_two();
-    steer_ctrl(0, 0, 2);
-    delay(1900);
     steer_ctrl(0, 0, 3);
-    delay(2200);
+    delay(400);
+    steer_ctrl(0, 0, 2);
+    delay(2500);
+    steer_ctrl(0, 0, 3);
+    delay(1700);
     buzz_three();
 }
 
-void turn_left()
+void turn_left() // POINT 重要 L折
 {
     buzz_two();
     steer_ctrl(0, 0, 1);
@@ -325,7 +329,7 @@ void turn_left()
 
 int is_start_turn_right(int l, int r) // 右に曲がるかどうかを判定 LR距離を入力する
 {
-    if (r > 100 || r == 0) // 一定距離もしくは無限であれば
+    if (r > 100 || r == 0) // POINT LRで特性が違うので注意 一定距離もしくは無限であれば 動かすなら最初に
     {
         start_turn_right_cont = start_turn_right_cont + 1;
         Serial.print("=DBG= TURN RIGHT REACH:");
@@ -336,7 +340,7 @@ int is_start_turn_right(int l, int r) // 右に曲がるかどうかを判定 LR
         start_turn_right_cont = 0;
     }
 
-    if (start_turn_right_cont > 4) // 4回曲がる判定になれば曲がる
+    if (start_turn_right_cont > 4) // POINT これ変えるのもあり，でもなぜかちょっと増やすだけでレスポンス終わる謎 4回曲がる判定になれば曲がる
     {
         return 1;
     }
@@ -348,7 +352,7 @@ int is_start_turn_right(int l, int r) // 右に曲がるかどうかを判定 LR
 
 int is_start_turn_left(int l, int r) // 左に曲がるかどうかを判定 LR距離を入力する
 {
-    if (l > 90 || l == 0) // 一定距離もしくは無限なら
+    if (l > 90 || l == 0) // POINT LRで特性が違うので注意 一定距離もしくは無限であれば 動かすなら最初に
     {
         start_turn_left_cont = start_turn_left_cont + 1;
         Serial.print("=DBG= TURN LEFT REACH:");
@@ -359,7 +363,7 @@ int is_start_turn_left(int l, int r) // 左に曲がるかどうかを判定 LR�
         start_turn_left_cont = 0;
     }
 
-    if (start_turn_left_cont > 4) // 4回曲がる判定クリアすると曲がる
+    if (start_turn_left_cont > 4) // POINT これ変えるのもあり，でもなぜかちょっと増やすだけでレスポンス終わる謎 4回曲がる判定になれば曲がる
     {
         return 1;
     }
@@ -369,7 +373,7 @@ int is_start_turn_left(int l, int r) // 左に曲がるかどうかを判定 LR�
     }
 }
 
-int no_lf_wall(int l, int r) // FIXME 補正用 左右の壁がなくなったら
+int no_lf_wall(int l, int r) // POINT 厳しかったらこれ使ってもいいかもしれない 補正用 左右の壁がなくなったら
 {
     if (l > 70 && r > 50)
     {

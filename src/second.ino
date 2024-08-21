@@ -41,6 +41,8 @@ int turn_passed_time = 0;                 // 直近では何秒前に曲がっ�
 float guess_start_pos_lr_ratio_ave = 0.0; // スタート時の左右の距離比 これからスタート場所を推定する
 int btn_cont = 0;                         // ボタン押下判定された回数を計測 クロックに依存
 unsigned int btn_time_cont = 0;           // ボタンが何秒押下されたかカウントする 一定以上で長押し判定
+int is_detected_green = 0;
+int is_now_out_or_in = 0; // 0:out 1:in
 
 void setup() // 初回に1度だけ実行
 {
@@ -57,122 +59,122 @@ void setup() // 初回に1度だけ実行
     staring.attach(STEER_PIN, STEER_US_MIN, STEER_US_MAX);
     Serial.println("=DBG= SYS BOOT");
     buzz_boot(); // ここまで起動
-    for (;;)
-    {                        // ボタンの長押し判定待ち受け
-        steer_ctrl(0, 0, 3); // 3で直進、ブレーキをかける
-        digitalWrite(MOT_1_PIN, LOW);
-        digitalWrite(MOT_2_PIN, LOW);
-        digitalWrite(MOT_3_PIN, LOW);
-        digitalWrite(MOT_REF_PIN, LOW);
+    // for (;;)
+    // {                             // ボタンの長押し判定待ち受け
+    //     steer_ctrl(0, 0, 3, 0.0); // 3で直進、ブレーキをかける
+    //     digitalWrite(MOT_1_PIN, LOW);
+    //     digitalWrite(MOT_2_PIN, LOW);
+    //     digitalWrite(MOT_3_PIN, LOW);
+    //     digitalWrite(MOT_REF_PIN, LOW);
 
-        if (button_ref() == 1)
-        { // 開始
-            buzz_start();
-            delay(1000); // 手が離れるのとかを待つ
-            for (int i = 0; i < 20; i++)
-            { // 20回ぐらい左右の距離を読んで平均をとる
-                guess_start_pos_lr_ratio_ave = guess_start_pos_lr_ratio_ave + (float)l_dis.ping_cm() / ((float)l_dis.ping_cm() + (float)r_dis.ping_cm());
-                delay(50);
-            }
-            guess_start_pos_lr_ratio_ave = guess_start_pos_lr_ratio_ave / 20;
-            int start_pos_i_c_o = 0;                // 車体がどの位置からスタートするか in:0 center:1 out:2
-            if (guess_start_pos_lr_ratio_ave < 0.3) // C周りと仮定する まだ車体の回転方向はわからないから
-            {
-                start_pos_i_c_o = 2; // in:0 center:1 out:2 C周りと仮定
-            }
-            else if (guess_start_pos_lr_ratio_ave < 0.6) // C周りと仮定する
-            {
-                start_pos_i_c_o = 1; // i:0 c:1 o:2 C周りと仮定
-            }
-            else
-            {
-                start_pos_i_c_o = 0; // i:0 c:1 o:2 C周りと仮定
-            }
-            buzz_two();
-            Serial.print("=DBG= START POS (IF CLOCKWISE 0:IN 1:CEN 2:OUT):"); // C周りと仮定する
-            Serial.println(start_pos_i_c_o);
-            for (;;)
-            { // 走行開始
-                digitalWrite(MOT_1_PIN, HIGH);
-                digitalWrite(MOT_2_PIN, LOW);
-                digitalWrite(MOT_3_PIN, LOW);
-                digitalWrite(MOT_REF_PIN, HIGH);
-                int l_raw = l_dis.ping_cm(); // 左右の距離を取得
-                int r_raw = r_dis.ping_cm();
-                int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE); // 取得した距離をhampelフィルタにかける
-                int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
-                Serial.print("=DBG= DIS HAMPELED L:");
-                Serial.print(l);
-                Serial.print(" R:");
-                Serial.println(r);
-                if (is_start_turn_right(l, r) == 1) // どっち回りかわからないので両方調べる
-                {
-                    court_c_or_ccw = 0; // C周りと確定
-                    Serial.println("=DBG= CONFIRM CLOCKWISE");
-                    break;
-                }
-                else if (is_start_turn_left(l, r) == 1) // どっち回りかわからないので両方調べる
-                {
-                    court_c_or_ccw = 1; // CCW周りと確定
-                    Serial.println("=DBG= CONFIRM COUNTERCLOCKWISE");
+    //     if (button_ref() == 1)
+    //     { // 開始
+    //         buzz_start();
+    //         delay(1000); // 手が離れるのとかを待つ
+    //         for (int i = 0; i < 20; i++)
+    //         { // 20回ぐらい左右の距離を読んで平均をとる
+    //             guess_start_pos_lr_ratio_ave = guess_start_pos_lr_ratio_ave + (float)l_dis.ping_cm() / ((float)l_dis.ping_cm() + (float)r_dis.ping_cm());
+    //             delay(50);
+    //         }
+    //         guess_start_pos_lr_ratio_ave = guess_start_pos_lr_ratio_ave / 20;
+    //         int start_pos_i_c_o = 0;                // 車体がどの位置からスタートするか in:0 center:1 out:2
+    //         if (guess_start_pos_lr_ratio_ave < 0.3) // C周りと仮定する まだ車体の回転方向はわからないから
+    //         {
+    //             start_pos_i_c_o = 2; // in:0 center:1 out:2 C周りと仮定
+    //         }
+    //         else if (guess_start_pos_lr_ratio_ave < 0.6) // C周りと仮定する
+    //         {
+    //             start_pos_i_c_o = 1; // i:0 c:1 o:2 C周りと仮定
+    //         }
+    //         else
+    //         {
+    //             start_pos_i_c_o = 0; // i:0 c:1 o:2 C周りと仮定
+    //         }
+    //         buzz_two();
+    //         Serial.print("=DBG= START POS (IF CLOCKWISE 0:IN 1:CEN 2:OUT):"); // C周りと仮定する
+    //         Serial.println(start_pos_i_c_o);
+    //         for (;;)
+    //         { // 走行開始
+    //             digitalWrite(MOT_1_PIN, HIGH);
+    //             digitalWrite(MOT_2_PIN, LOW);
+    //             digitalWrite(MOT_3_PIN, LOW);
+    //             digitalWrite(MOT_REF_PIN, HIGH);
+    //             int l_raw = l_dis.ping_cm(); // 左右の距離を取得
+    //             int r_raw = r_dis.ping_cm();
+    //             int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE); // 取得した距離をhampelフィルタにかける
+    //             int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
+    //             Serial.print("=DBG= DIS HAMPELED L:");
+    //             Serial.print(l);
+    //             Serial.print(" R:");
+    //             Serial.println(r);
+    //             if (is_start_turn_right(l, r) == 1) // どっち回りかわからないので両方調べる
+    //             {
+    //                 court_c_or_ccw = 0; // C周りと確定
+    //                 Serial.println("=DBG= CONFIRM CLOCKWISE");
+    //                 break;
+    //             }
+    //             else if (is_start_turn_left(l, r) == 1) // どっち回りかわからないので両方調べる
+    //             {
+    //                 court_c_or_ccw = 1; // CCW周りと確定
+    //                 Serial.println("=DBG= CONFIRM COUNTERCLOCKWISE");
 
-                    if (start_pos_i_c_o == 0)
-                    {
-                        start_pos_i_c_o = 2;
-                    }
-                    else if (start_pos_i_c_o == 2)
-                    {
-                        start_pos_i_c_o = 0;
-                    } // start_pos_i_c_oはC周りと仮定した時の話なので，CCWであればIN,OUT時について反転させる
-                    Serial.println("=DBG= START POS INVERTED FOR CCW");
-                    break;
-                }
-            }
-            if (court_c_or_ccw == 0) // C周りの場合
-            {
-                if (start_pos_i_c_o == 0)
-                { // inの場合
-                    first_in_turn_right();
-                    break;
-                }
-                else if (start_pos_i_c_o == 1)
-                { // center
-                    first_center_turn_right();
-                    break;
-                }
-                else
-                { // out
-                    first_out_turn_right();
-                    break;
-                }
-            }
-            else
-            { // ccw周りの場合
-                if (start_pos_i_c_o == 0)
-                { // in
-                    first_in_turn_left();
-                    break;
-                }
-                else if (start_pos_i_c_o == 1)
-                { // center
-                    first_center_turn_left();
-                    break;
-                }
-                else
-                { // out
-                    first_out_turn_left();
-                    break;
-                }
-            }
-        }
-    }
+    //                 if (start_pos_i_c_o == 0)
+    //                 {
+    //                     start_pos_i_c_o = 2;
+    //                 }
+    //                 else if (start_pos_i_c_o == 2)
+    //                 {
+    //                     start_pos_i_c_o = 0;
+    //                 } // start_pos_i_c_oはC周りと仮定した時の話なので，CCWであればIN,OUT時について反転させる
+    //                 Serial.println("=DBG= START POS INVERTED FOR CCW");
+    //                 break;
+    //             }
+    //         }
+    //         if (court_c_or_ccw == 0) // C周りの場合
+    //         {
+    //             if (start_pos_i_c_o == 0)
+    //             { // inの場合
+    //                 first_in_turn_right();
+    //                 break;
+    //             }
+    //             else if (start_pos_i_c_o == 1)
+    //             { // center
+    //                 first_center_turn_right();
+    //                 break;
+    //             }
+    //             else
+    //             { // out
+    //                 first_out_turn_right();
+    //                 break;
+    //             }
+    //         }
+    //         else
+    //         { // ccw周りの場合
+    //             if (start_pos_i_c_o == 0)
+    //             { // in
+    //                 first_in_turn_left();
+    //                 break;
+    //             }
+    //             else if (start_pos_i_c_o == 1)
+    //             { // center
+    //                 first_center_turn_left();
+    //                 break;
+    //             }
+    //             else
+    //             { // out
+    //                 first_out_turn_left();
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
 }
-
 int status = 0; // 通常0 ブロックなし1 エラー2
 int res_id = 0; // 以下通常の場合のみ
 int res_x = 0;
 int res_y = 0;
 int res_size = 0;
+int block_type = 0; // 0:green 1:red
 
 void loop()
 {
@@ -187,76 +189,125 @@ void loop()
         int r_raw = r_dis.ping_cm();
         int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
         int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
-        Serial.print("=DBG= DIS HAMPELED L:");
-        Serial.print(l);
-        Serial.print(" R:");
-        Serial.println(r);
+        // Serial.print("=DBG= DIS HAMPELED L:");
+        // Serial.print(l);
+        // Serial.print(" R:");
+        // Serial.println(r);
 
-        steer_ctrl(l, r, 0);
-        if (Serial1.available())
+        steer_ctrl(l, r, 3, 0.0);
+        if (is_start_turn_right(l, r) == 1)
         {
-            // String serialtxt = Serial1.readStringUntil('\n');
-            // serialtxt[serialtxt.length() - 1] = '\0';
-
-            const uint8_t BufferSize = 6;
-            uint8_t buffer[BufferSize];
-            Serial1.readBytes(buffer, BufferSize);
-
-            if (buffer[0] == 0)
+            buzz_one();
+            if (is_now_out_or_in == 0)
             {
-                if (buffer[1] == 1)
-                { // detect
-                    status = 0;
-                    res_id = buffer[2];
-                    res_x = buffer[3];
-                    res_y = buffer[4];
-                    res_size = buffer[5];
-                }
-                else if (buffer[1] == 0)
-                { // none
-                    status = 1;
-                }
-                else
-                {
-                    status = 2;
-                }
-            }
-            else if (buffer[0] == 1)
-            {
-                status = 2;
+                turn_right_from_out_first();
             }
             else
             {
-                status = 2;
+                turn_right_from_in_first();
             }
-        } // ハスキーここまで status(0:ブロックあり 1:ブロックなし 2:エラー) res_id res_x res_y res_size
-        // ここから block_type(0:緑 1:赤)
-        if (status == 0)
-        {
-            if (res_id == 1) // green
+            for (int i = 0; i < 100; i++)
             {
-                block_type = 0;
+                huskey();
             }
-            else if (res_id == 2) // red
+            if (is_detected_green == 1) // 曲がってる途中
             {
-                block_type = 1;
+                buzz_three();
+                turn_right_from_out_to_in_second();
+                buzz_one();
+                for (int i = 0; i < 100; i++)
+                {
+                    huskey();
+                }
+                if (is_detected_green == 1) // 曲がってから1
+                {
+                    buzz_three();
+                    digitalWrite(MOT_1_PIN, LOW);
+                    digitalWrite(MOT_2_PIN, LOW);
+                    digitalWrite(MOT_3_PIN, LOW);
+                    digitalWrite(MOT_REF_PIN, LOW);
+                }
+                else
+                {
+                    buzz_one();
+                    switch_right_from_in_to_out();
+                    buzz_three();
+                    for (;;)
+                    {
+                        is_now_out_or_in = 1;
+                        int l_raw = l_dis.ping_cm();
+                        int r_raw = r_dis.ping_cm();
+                        int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
+                        int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
+                        steer_ctrl(l, r, 0, 0.9);
+                        digitalWrite(MOT_1_PIN, HIGH);
+                        digitalWrite(MOT_2_PIN, LOW);
+                        digitalWrite(MOT_3_PIN, LOW);
+                        digitalWrite(MOT_REF_PIN, HIGH);
+                        if (is_start_turn_right(l, r) == 1)
+                        {
+                            buzz_one();
+                            break;
+                        }
+                    }
+                }
             }
-        }
-        else if (status == 1)
-        { // none
-            steer_ctrl(l, r, 0, 0.5);
-            Serial.println("C");
-        }
-
-        if (block_type == 0) // green
-        {
-            steer_ctrl(l, r, 0, 0.2);
-            Serial.println("I");
-        }
-        else if (block_type == 1) // red
-        {
-            steer_ctrl(l, r, 0, 0.8);
-            Serial.println("O");
+            else
+            { /// 曲がってる時に外側へ
+                buzz_one();
+                turn_right_from_out_to_out_second();
+                buzz_three();
+                for (int i = 0; i < 100; i++)
+                {
+                    huskey();
+                }
+                if (is_detected_green == 1) // 曲がってから2
+                {
+                    buzz_one();
+                    switch_right_from_out_to_in();
+                    buzz_three();
+                    for (;;)
+                    {
+                        is_now_out_or_in = 1;
+                        int l_raw = l_dis.ping_cm();
+                        int r_raw = r_dis.ping_cm();
+                        int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
+                        int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
+                        steer_ctrl(l, r, 0, 0.1);
+                        digitalWrite(MOT_1_PIN, HIGH);
+                        digitalWrite(MOT_2_PIN, LOW);
+                        digitalWrite(MOT_3_PIN, LOW);
+                        digitalWrite(MOT_REF_PIN, HIGH);
+                        if (is_start_turn_right(l, r) == 1)
+                        {
+                            buzz_one();
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    buzz_three();
+                    for (;;)
+                    {
+                        is_now_out_or_in = 0;
+                        int l_raw = l_dis.ping_cm();
+                        int r_raw = r_dis.ping_cm();
+                        int l = hampel(l_raw, dis_l_hampel_plots, DIS_L_HAMPEL_PLOT_SIZE);
+                        int r = hampel(r_raw, dis_r_hampel_plots, DIS_R_HAMPEL_PLOT_SIZE);
+                        steer_ctrl(l, r, 0, 0.8);
+                        digitalWrite(MOT_1_PIN, HIGH);
+                        digitalWrite(MOT_2_PIN, LOW);
+                        digitalWrite(MOT_3_PIN, LOW);
+                        digitalWrite(MOT_REF_PIN, HIGH);
+                        if (is_start_turn_right(l, r) == 1)
+                        {
+                            buzz_one();
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
     else
@@ -270,9 +321,176 @@ void loop()
     delay(20); // FIXME 調整する クロックは早い方がいいよね
 }
 
-// NOTE ボタン動作
-int btn_cont = 0; // ボタン押下判定された回数を計測 クロックに依存
-unsigned int btn_time_cont = 0;
+void turn_right_from_out_first()
+{
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(200);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(2300);
+    steer_ctrl(0, 0, 3, 0.0);
+    digitalWrite(MOT_1_PIN, LOW);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, LOW);
+    delay(2000);
+}
+
+void turn_right_from_in_first()
+{
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(200);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(300);
+    steer_ctrl(0, 0, 3, 0.0);
+    digitalWrite(MOT_1_PIN, LOW);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, LOW);
+    delay(2000);
+}
+
+void turn_right_from_out_to_in_second()
+{
+    digitalWrite(MOT_1_PIN, HIGH);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, HIGH);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(800);
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(4000);
+    steer_ctrl(0, 0, 1, 0.0);
+    delay(500);
+    digitalWrite(MOT_1_PIN, LOW);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, LOW);
+    delay(2000);
+}
+
+void turn_right_from_out_to_out_second()
+{
+    digitalWrite(MOT_1_PIN, HIGH);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, HIGH);
+    steer_ctrl(0, 0, 1, 0.0);
+    delay(1000);
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(5000);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(1900);
+    steer_ctrl(0, 0, 3, 0.0);
+    digitalWrite(MOT_1_PIN, LOW);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, LOW);
+    delay(2000);
+}
+
+void switch_right_from_in_to_out()
+{
+    digitalWrite(MOT_1_PIN, HIGH);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, HIGH);
+    steer_ctrl(0, 0, 1, 0.0);
+    delay(2000);
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(7000);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(1000);
+    digitalWrite(MOT_1_PIN, LOW);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, LOW);
+}
+
+void switch_right_from_out_to_in()
+{
+    digitalWrite(MOT_1_PIN, HIGH);
+    digitalWrite(MOT_2_PIN, LOW);
+    digitalWrite(MOT_3_PIN, LOW);
+    digitalWrite(MOT_REF_PIN, HIGH);
+    steer_ctrl(0, 0, 2, 0.0);
+    delay(800);
+    steer_ctrl(0, 0, 3, 0.0);
+    delay(3300);
+    steer_ctrl(0, 0, 1, 0.0);
+    delay(2000);
+    steer_ctrl(0, 0, 3, 0.0);
+}
+
+void huskey()
+{
+    if (Serial1.available())
+    {
+        // String serialtxt = Serial1.readStringUntil('\n');
+        // serialtxt[serialtxt.length() - 1] = '\0';
+
+        const uint8_t BufferSize = 6;
+        uint8_t buffer[BufferSize];
+        Serial1.readBytes(buffer, BufferSize);
+
+        if (buffer[0] == 0) // エラーではない
+        {
+            if (buffer[1] == 1) // ブロック検出
+            {
+                status = 0;
+                res_id = buffer[2];
+                res_x = buffer[3];
+                res_y = buffer[4];
+                res_size = buffer[5];
+            }
+            else if (buffer[1] == 0) // ブロックなし
+            {
+                status = 1;
+            }
+            else
+            { // エラー
+                status = 2;
+            }
+        }
+        else if (buffer[0] == 1) // エラー
+        {
+            status = 3;
+        }
+        else
+        {
+            status = 4;
+        }
+    }
+    // ハスキーここまで status(0:ブロックあり 1:ブロックなし 2:エラー) res_id res_x res_y res_size
+    // ここから status(通常0 ブロックなし1 エラー2)
+
+    if (status == 0)
+    { // ブロック   あり
+        if (res_id == 1)
+        { // GRE
+            Serial.print("=DBG= GRE");
+            digitalWrite(BUZZ_PIN, LOW);
+            is_detected_green = 1;
+        }
+        else
+        { // RED
+            Serial.print("=DBG= RED");
+            digitalWrite(BUZZ_PIN, LOW);
+            is_detected_green = 1;
+        }
+    }
+    else if (status == 1)
+    { // ブロックなし
+        Serial.print("=DBG= NONE");
+        digitalWrite(BUZZ_PIN, LOW);
+        is_detected_green = 0;
+    }
+    else
+    { // エラー
+        Serial.print("=DBG= ERR");
+        digitalWrite(BUZZ_PIN, HIGH);
+        is_detected_green = 1;
+    }
+}
 
 // NOTE ボタン動作
 int button_ref()
@@ -302,23 +520,6 @@ int button_ref()
         btn_time_cont = 0;
     }
     return 0; // 最終リターン 長押しでなければ0
-}
-
-// NOTE 比較関数 昇順ソート
-int cmp(const void *x, const void *y)
-{
-    if (*(int *)x > *(int *)y)
-    {
-        return 1;
-    }
-    else if (*(int *)x < *(int *)y)
-    {
-        return -1;
-    }
-    else
-    {
-        return 0;
-    }
 }
 
 int hampel(int now_plot, int *plots, int plots_size)
@@ -381,18 +582,156 @@ int cmp(const void *x, const void *y)
     }
 }
 
+int is_start_turn_right(int l, int r) // 右に曲がるかどうかを判定 LR距離を入力する
+{
+    if (r > 120 || r == 0) // 一定距離もしくは無限であれば
+    {
+        start_turn_right_cont = start_turn_right_cont + 1;
+        Serial.print("=DBG= TURN RIGHT REACH:");
+        Serial.println(start_turn_right_cont);
+    }
+    else
+    {
+        start_turn_right_cont = 0;
+    }
+
+    if (start_turn_right_cont > 3) // 4回曲がる判定になれば曲がる
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+int is_start_turn_left(int l, int r) // 左に曲がるかどうかを判定 LR距離を入力する
+{
+    if (l > 90 || l == 0) // 一定距離もしくは無限なら
+    {
+        start_turn_left_cont = start_turn_left_cont + 1;
+        Serial.print("=DBG= TURN LEFT REACH:");
+        Serial.println(start_turn_left_cont);
+    }
+    else
+    {
+        start_turn_left_cont = 0;
+    }
+
+    if (start_turn_left_cont > 4) // 4回曲がる判定クリアすると曲がる
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+void first_in_turn_right() // 八
+{
+    Serial.println("=DBG= RIGHT TURN CONFIRM: FIRST IN");
+    buzz_one();
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(1100);
+    steer_ctrl(0, 0, 2, 0.5);
+    delay(2500);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(1700);
+    buzz_three();
+    Serial.println("=DBG= TURN END");
+}
+
+void first_center_turn_right()
+{
+    Serial.println("=DBG= RIGHT TURN CONFIRM: FIRST CENTER");
+    buzz_two();
+    steer_ctrl(0, 0, 2, 0.5);
+    delay(2700);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(3700);
+    buzz_three();
+    Serial.println("=DBG= TURN END");
+}
+
+void first_out_turn_right()
+{
+    Serial.println("=DBG= RIGHT TURN CONFIRM: FIRST OUT");
+    buzz_three();
+    steer_ctrl(0, 0, 2, 0.5);
+    delay(3500);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(5000);
+    buzz_three();
+    Serial.println("=DBG= TURN END");
+}
+
+void first_in_turn_left()
+{
+    Serial.println("=DBG= LEFT TURN CONFIRM: FIRST IN");
+    buzz_one();
+    steer_ctrl(0, 0, 1, 0.5);
+    delay(3700);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(2300);
+    buzz_three();
+    Serial.println("=DBG= TURN END");
+}
+
+void first_center_turn_left()
+{
+    Serial.println("=DBG= LEFT TURN CONFIRM: FIRST CENTER");
+    buzz_two();
+    steer_ctrl(0, 0, 1, 0.5);
+    delay(3700);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(3700);
+    buzz_three();
+    Serial.println("=DBG= TURN END");
+}
+
+void first_out_turn_left()
+{
+    Serial.println("=DBG= LEFT TURN CONFIRM: FIRST OUT");
+    buzz_three();
+    steer_ctrl(0, 0, 1, 0.5);
+    delay(3700);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(3000);
+    buzz_three();
+    Serial.println("=DBG= TURN END");
+}
+
+void turn_right() // 八
+{
+    buzz_two();
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(400);
+    steer_ctrl(0, 0, 2, 0.5);
+    steer_ctrl(0, 0, 2, 0.5);
+    delay(2500);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(1700);
+    buzz_three();
+}
+
+void turn_left()
+{
+    buzz_two();
+    steer_ctrl(0, 0, 1, 0.5);
+    delay(1700);
+    steer_ctrl(0, 0, 3, 0.5);
+    delay(2400);
+    buzz_three();
+}
+
 // NOTE ステアリング制御
-void steer_ctrl(int l, int r, int m, float center) // l:左 r:右 m:(モード 0:LRソースからPD制御 1:L折 2:R折 3:直進方向固定)
+void steer_ctrl(int l, int r, int m, float center) // l:左 r:右 m:(モード 0:LRソースからPD制御 1:L折 2:R折 3:直進方向固定) c:中央を設定する,モード0の場合
 {
     if (m == 0)
     {
         float s = (float)r / ((float)l + (float)r);
         float a = (STEER_R_END - STEER_L_END) * s + STEER_L_END;
-
-        // Serial.print("=DBG= STEER CTRL RATIO:");
-        // Serial.println(s);
-        // Serial.print("=DBG= STEER OUTPUT MS:");
-        // Serial.println(a);
 
         if (s > (center + 0.1))
         {
@@ -403,6 +742,8 @@ void steer_ctrl(int l, int r, int m, float center) // l:左 r:右 m:(モード 0
             a = 10.0;
         }
         staring.write(a);
+        Serial.print(" =DBG= STEER OUTPUT MS: ");
+        Serial.println(a);
     }
     else if (m == 1)
     {
